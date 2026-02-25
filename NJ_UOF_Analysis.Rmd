@@ -8,7 +8,7 @@ output: html_document
 ```{r}
 #load data
 #uof_dept <- read.csv("~/Desktop/CADS/CS 614/Module2/UOF_BY_DEPARTMENTS.csv")
-uof_dept <- read.csv("/Users/ChristieFung/Desktop/CADS/Fall 2023/CS 614/Module2/UOF_BY_DEPARTMENTS.csv")
+uof_dept <- read.csv("UOF_BY_DEPARTMENTS.csv")
 
 ```
 
