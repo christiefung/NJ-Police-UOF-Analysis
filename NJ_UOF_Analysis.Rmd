@@ -1,18 +1,9 @@
 ---
-title: "NJ_UOF_Analysis"
-author: "Christie Fung"
-date: "2/25/2026"
 output: html_document
+runtime: shiny
 ---
 
-```{r}
-#load data
-#uof_dept <- read.csv("~/Desktop/CADS/CS 614/Module2/UOF_BY_DEPARTMENTS.csv")
-uof_dept <- read.csv("UOF_BY_DEPARTMENTS.csv")
-
-```
-
-```{r}
+```{r setup, include=FALSE}
 # Install and load required packages
 library(tigris)
 library(sf)
@@ -22,8 +13,24 @@ library(tidyr)
 library(dplyr)
 library(shiny)
 
+# silence progress bars globally
+options(tigris_use_cache = TRUE)
+
+knitr::opts_chunk$set(
+  echo = FALSE, # Hides the actual code
+  message = FALSE,   # Hides the loading messages
+  warning = FALSE   # Hides any warnings
+)  
+
+
+#load data
+uof_dept <- read.csv("UOF_BY_DEPARTMENTS.csv")
+
+```
+
+```{r, echo = FALSE}
 #Download county shapefiles
-counties <- tigris::counties(state = "NJ")
+counties <- suppressMessages(tigris::counties(state = "NJ", progress_bar = FALSE))
 
 #Merge dataset with county shapefiles
 merged_data <- merge(counties, uof_dept, by.x = "NAME", by.y = "county", all.x = TRUE)
@@ -45,7 +52,7 @@ merged_data <- merge(counties, uof_dept, by.x = "NAME", by.y = "county", all.x =
 ```
 
 
-```{r}
+```{r, echo = FALSE}
 #subset useful variables
 merged_data2 <- merged_data[, c("NAME", "GEOID", "INTPTLAT", "INTPTLON","Town_county",
                                 "pd_dept","total_hands_fists","total_pepper_spray",
@@ -74,7 +81,7 @@ population <- c(275638, 952997, 466103, 524907, 95634, 151356, 849477,306601,703
                 655735,513936,65117,346875,146084,569815,110926)
               
 merged_mean$county_pop <- population
-print(merged_mean)
+#print(merged_mean)
 
 #standardize with population
 merged_mean <- merged_mean %>%
@@ -91,7 +98,7 @@ merged_mean <- merged_mean %>%
 ```
 
 
-```{r}
+```{r, echo = FALSE}
 #just some more testing
 # warren <- merged_mean[merged_mean$NAME == 'Warren',]
 # ggplot() + geom_sf(data = warren) + theme_bw()
@@ -114,11 +121,11 @@ merged_mean <- merged_mean %>%
 
 ```
 
-```{r}
+```{r, echo = FALSE}
 #for the app
 
 ui <- fluidPage(
-  titlePanel('Module 2', window = "Module 2"),
+  titlePanel('NJ Use of Force by County Analysis', window = "Module 2"),
   sidebarLayout(
     sidebarPanel(
     
