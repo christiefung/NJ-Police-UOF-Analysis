@@ -1,0 +1,13 @@
+name: nj-police-uof-analysis
+title: NJ-Police-UOF-Analysis
+username: 3iwmjz-christie-fung
+account: 3iwmjz-christie-fung
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 16765738
+bundleId: 11631956
+url: https://3iwmjz-christie-fung.shinyapps.io/nj-police-uof-analysis/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: NJ_UOF_Analysis.Rmd|README.md|UOF-BY-INDIVIDUALS_10_1_20-10_31_22.csv

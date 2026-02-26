@@ -1,0 +1,296 @@
+---
+output: html_document
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+# Install and load required packages
+library(tigris)
+library(sf)
+library(ggplot2)
+library(reshape2)
+library(tidyr)
+library(dplyr)
+library(shiny)
+
+# silence progress bars globally
+options(tigris_use_cache = TRUE)
+
+
+
+#load data
+uof_dept <- read.csv("UOF_BY_DEPARTMENTS.csv")
+
+```
+
+```{r, echo = FALSE}
+#Download county shapefiles
+counties <- suppressMessages(tigris::counties(state = "NJ", progress_bar = FALSE))
+
+#Merge dataset with county shapefiles
+merged_data <- merge(counties, uof_dept, by.x = "NAME", by.y = "county", all.x = TRUE)
+
+#just trying out to plot the map
+#create an sf object
+# sf_object <- st_as_sf(merged_data)
+# 
+# ggplot(sf_object,aes(fill = total_baton, label = NAME)) +
+#   geom_sf() +
+#   geom_sf_label(fill = "white",
+#                 fun.geometry = sf::st_centroid,size = 3)+
+#   scale_fill_continuous(low = "lightblue", 
+#                         high = "darkblue") +
+#   geom_text(aes(label = NAME, x = INTPTLON, y = INTPTLAT), size = 2, check_overlap = TRUE, nudge_y = 0.1)+
+#   theme_minimal() + coord_sf(lims_method = "geometry_bbox")
+
+
+```
+
+
+```{r, echo = FALSE}
+#subset useful variables
+merged_data2 <- merged_data[, c("NAME", "GEOID", "INTPTLAT", "INTPTLON","Town_county",
+                                "pd_dept","total_hands_fists","total_pepper_spray",
+                                "total_baton","total_leg_strikes","total_deadly_force",
+                                "total_take_down","white_pct_subjects","black_pct_subjects",
+                              "hispanic_pct_subjects","asian_pacific_islander_pct_subjects")]
+
+#calculate means for each type of force by county
+merged_mean <- merged_data2 %>% 
+  group_by(NAME) %>%
+             summarize(mean_hf = mean(total_hands_fists, na.rm = TRUE),
+                       mean_pp = mean(total_pepper_spray, na.rm = TRUE),
+                       mean_b = mean(total_baton, na.rm = TRUE),
+                       mean_ls = mean(total_leg_strikes, na.rm = TRUE),
+                       mean_df = mean(total_deadly_force, na.rm = TRUE),
+                       mean_td = mean(total_take_down, na.rm = TRUE),
+                       mean_white = mean(white_pct_subjects, na.rm = TRUE),
+                       mean_black = mean(black_pct_subjects, na.rm = TRUE),
+                       mean_hispanic = mean(hispanic_pct_subjects, na.rm = TRUE),
+                       mean_asian = mean(asian_pacific_islander_pct_subjects, na.rm = TRUE)
+                       
+             )
+                       
+     
+population <- c(275638, 952997, 466103, 524907, 95634, 151356, 849477,306601,703366,129777,380688,861418,644098,511151,
+                655735,513936,65117,346875,146084,569815,110926)
+              
+merged_mean$county_pop <- population
+#print(merged_mean)
+
+#standardize with population
+merged_mean <- merged_mean %>%
+  group_by(NAME) %>%
+  mutate(standardized_hf = mean_hf*100000/county_pop,
+         standardized_pp = mean_pp*100000/county_pop,
+         standardized_b = mean_b*100000/county_pop,
+           standardized_ls = mean_ls*100000/county_pop,
+           standardized_df = mean_df*100000/county_pop,
+           standardized_td = mean_td*100000/county_pop)
+
+## could do the same for race if we have a breakdown of the racial profiles for each county
+                       
+```
+
+
+```{r, echo = FALSE}
+#just some more testing
+# warren <- merged_mean[merged_mean$NAME == 'Warren',]
+# ggplot() + geom_sf(data = warren) + theme_bw()
+# 
+# ggplot(merged_mean,aes(fill = mean_hf, label = NAME)) +
+#   geom_sf() +
+#   geom_sf_label(fill = "white",
+#                 fun.geometry = sf::st_centroid,size = 2)+
+#    scale_fill_continuous(low = "lightblue", 
+#                         high = "darkblue") +
+#   xlab("Latitude")+
+#   ylab("Longitude")+
+#   theme(axis.title=element_blank(), 
+#         axis.text=element_text(size=12, color="#837F77"), 
+#         axis.ticks=element_blank()) + 
+#   ggtitle('New Jersey Counties')+
+#   theme_minimal()
+
+
+
+```
+
+```{r, echo = FALSE}
+#for the app
+
+ui <- fluidPage(
+  tags$head(
+    tags$style(HTML("
+      /* This kills the R Markdown fixed-width document behavior */
+      .main-container { max-width: 100% !important; margin: 0 !important; }
+      .container-fluid { padding: 0 !important; }
+      
+      /* This ensures the sidebar and main panel use all space */
+      .row { margin: 0 !important; }
+      
+      /* Optional: Makes the font a bit cleaner for web */
+      body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
+    "))
+  ),
+#  titlePanel('NJ Use of Force by County Analysis', window = "Module 2"),
+  sidebarLayout(
+    fluid = TRUE,
+    sidebarPanel(
+    # creates a fixed-height box for the counties
+      tags$div(style = "height: 300px; overflow-y: scroll; border: 1px solid #eee; 
+               padding: 10px; margin-bottom: 10px;", 
+           uiOutput("countyOutput")),
+    
+      radioButtons("forceUseInput","Type of Police Force used (Mean Levels)", 
+                   choices = c("Hands Fists", "Pepper Spray", "Baton",
+                               "Leg Strikes", "Deadly Force", "Take down"), selected ="Hands Fists")
+
+    ),
+    
+    mainPanel(
+      plotOutput("mapOutput",height="800px",width = "100%"),
+    )
+  )
+)
+
+server <- function(input, output) {
+  
+  selected_force <- reactive({ #store the selected_force as a reactive variable
+    if (input$forceUseInput == "Hands Fists") {
+      return("standardized_hf")
+    } else if (input$forceUseInput == "Pepper Spray") {
+      return("standardized_pp")
+    } else if (input$forceUseInput == "Baton") {
+      return("standardized_b")
+    } else if (input$forceUseInput == "Leg Strikes") {
+      return("standardized_ls")
+    } else if (input$forceUseInput == "Deadly Force") {
+      return("standardized_df")
+    } else if (input$forceUseInput == "Take down") {
+      return("standardized_td")
+    } else {
+      # Default or fallback value
+      return("standardized_hf")
+    }
+  })
+  
+  #to plot the min and max values of each force on the legend
+  min_value_for_hf <- min(merged_mean$standardized_hf, na.rm = TRUE) 
+  max_value_for_hf <- max(merged_mean$standardized_hf, na.rm = TRUE) 
+
+  min_value_for_pp <- min(merged_mean$standardized_pp, na.rm = TRUE)
+  max_value_for_pp <- max(merged_mean$standardized_pp, na.rm = TRUE)
+  
+  min_value_for_b <- min(merged_mean$standardized_b, na.rm = TRUE)
+  max_value_for_b <- max(merged_mean$standardized_b, na.rm = TRUE)
+  
+  min_value_for_ls <- min(merged_mean$standardized_ls, na.rm = TRUE)
+  max_value_for_ls <- max(merged_mean$standardized_ls, na.rm = TRUE)
+  
+  min_value_for_df <- min(merged_mean$standardized_df, na.rm = TRUE)
+  max_value_for_df <- max(merged_mean$standardized_df, na.rm = TRUE)
+  
+  min_value_for_td <- min(merged_mean$standardized_td, na.rm = TRUE)
+  max_value_for_td <- max(merged_mean$standardized_td, na.rm = TRUE)
+  
+  #transform the color scale so colors are more spread out and easier to distinguish 
+  original_hf <- c(4, 100, 1200, 5000, 18000)
+  transformed_hf <- sqrt(original_hf)
+
+  original_pp <- c(0.15,50,500,2000,max_value_for_pp^2)
+  transformed_pp <- sqrt(original_pp)
+  
+  original_b <- c(0,0.08,0.6,4,max_value_for_b^2)
+  transformed_b <- sqrt(original_b)
+
+  original_ls <- c(0.02,10,100,250,max_value_for_ls^2)
+  transformed_ls <- sqrt(original_ls)
+
+  original_df <- c(0,0.02,0.1,0.3,max_value_for_df^2)
+  transformed_df <- sqrt(original_df) 
+
+  original_td <- c(0.06,10,50,200,max_value_for_td^2)
+  transformed_td <- sqrt(original_td)
+
+  
+  filtered <- reactive({ #store the filtered as a reactive variable
+
+    merged_mean %>%
+      filter(NAME %in% input$countyInput) %>%
+      select(NAME, !!sym(selected_force()))
+
+  })
+  
+  output$mapOutput <- renderPlot({
+    if(is.null(input$countyInput)) return(NULL) 
+    
+    ggplot(merged_mean, aes())+ geom_sf(color = "gray", fill = "white", size = 0.5)+
+      
+      geom_sf(data=filtered(), aes(fill = !!sym(selected_force())),  #fill = selected_force(),
+      color = "black", size = 0.5) +
+      geom_sf_label(aes(label = NAME),fill = "white", 
+              fun.geometry = sf::st_centroid,
+              size = 2.5)+
+      scale_fill_gradient(limits = if (input$forceUseInput == "Hands Fists") c(min_value_for_hf, max_value_for_hf)
+                          else if (input$forceUseInput == "Pepper Spray") c(min_value_for_pp, max_value_for_pp)
+                          else if (input$forceUseInput == "Baton") c(min_value_for_b, max_value_for_b)
+                          else if (input$forceUseInput == "Leg Strikes") c(min_value_for_ls, max_value_for_ls)
+                          else if (input$forceUseInput == "Deadly Force") c(min_value_for_df, max_value_for_df)
+                          else c(min_value_for_td, max_value_for_td),
+                          trans = "sqrt",
+                          
+                          breaks = if (input$forceUseInput == "Hands Fists") transformed_hf
+                           else if (input$forceUseInput == "Pepper Spray") transformed_pp
+                           else if (input$forceUseInput == "Baton") transformed_b
+                           else if (input$forceUseInput == "Leg Strikes") transformed_ls
+                           else if (input$forceUseInput == "Deadly Force") transformed_df
+                           else transformed_td,
+                          
+                           labels = if (input$forceUseInput == "Hands Fists") 
+                             sprintf("%.2f", c(min_value_for_hf,transformed_hf[2:4], max_value_for_hf))
+                          else if (input$forceUseInput == "Pepper Spray")  
+                            sprintf("%.2f", c(min_value_for_pp,transformed_pp[2:4],max_value_for_pp))
+                          else if (input$forceUseInput == "Baton") 
+                            sprintf("%.2f", c(min_value_for_b, transformed_b[2:4], max_value_for_b))
+                          else if (input$forceUseInput == "Leg Strikes") 
+                            sprintf("%.2f", c(min_value_for_ls, transformed_ls[2:4], max_value_for_ls))
+                          else if (input$forceUseInput == "Deadly Force") 
+                            sprintf("%.2f", c(min_value_for_df,transformed_df[2:4],max_value_for_df))
+                          else sprintf("%.2f", c(min_value_for_td, transformed_td[2:4],max_value_for_td)),
+                          
+                          na.value = "grey",
+                          low = "lightblue", 
+                          high = "darkblue")+
+      labs(fill = "Standardized Means")+
+      xlab("Latitude")+
+      ylab("Longitude")+
+      theme(
+      legend.position = "bottom",
+      axis.title=element_blank(), 
+      axis.text=element_text(size=12, color="#837F77"), 
+      axis.ticks=element_blank()) + 
+      ggtitle('New Jersey Counties')+
+      theme_minimal()+coord_sf(xlim=c(-75.6, -73.8),ylim=c(38.9,41.4))
+  }, res = 96)
+  
+  
+  output$countyOutput <- renderUI({
+    checkboxGroupInput("countyInput", "County", 
+                choices = sort(unique(merged_mean$NAME)), 
+                selected = "Atlantic")
+    
+  })
+  
+}
+  
+
+#run the server
+shinyApp(ui = ui, server = server)
+
+```
+
+
+
+
+
